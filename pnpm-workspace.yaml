@@ -142,3 +142,4 @@ minimumReleaseAgeExclude:
 
 patchedDependencies:
   '@emnapi/core@1.11.2': patches/@emnapi__core@1.11.2.patch
+  '@napi-rs/cli@3.7.2': patches/@napi-rs__cli@3.7.2.patch

@@ -331,3 +331,4 @@ strip = "none"
 
 [patch.crates-io]
 napi = { git = "https://github.com/napi-rs/napi-rs.git", rev = "5cb591fb5980a6251d290576c361154afae6541c" }
+napi-build = { git = "https://github.com/napi-rs/napi-rs.git", rev = "cef31019d6b108f780f071a29236a4f2a5518a93" }
