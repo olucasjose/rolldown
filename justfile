@@ -219,21 +219,15 @@ build-rolldown-binding:
 
 # Build `rolldown` located in `packages/rolldown` itself and its `.node` binding.
 #
-# The committed WASI loader set is intentionally mixed: the node loader
-# (`rolldown-binding.wasi.cjs`) is the THREADED variant (the wasi fallback
-# shipped next to the threaded wasm), while the browser loader
-# (`rolldown-binding.wasi-browser.js`) is the SINGLE-THREAD variant that
-# `@rolldown/browser` ships (RD-14). Non-wasi builds regenerate both loaders
-# deterministically for the config's declared wasi target
-# (wasm32-wasip1-threads, i.e. threaded — see patches/@napi-rs__cli@3.7.2.patch),
-# so the regenerated browser loader legitimately differs from its committed
-# single-thread copy: restore it so native builds leave a clean tree (CI's
-# "Check no diff" relies on this). The single-thread loaders are guarded by
-# scripts/misc/check-wasi-threadless.mjs in the WASI workflow. See
+# The committed WASI loader sets are per-flavor (distinct names): the threaded
+# flavor owns `rolldown-binding.wasi.*` + the worker scripts, the single-thread
+# flavor owns `rolldown-binding.wasip1.*`. Non-wasi builds regenerate BOTH
+# flavors' loaders deterministically from the wasi targets declared in the napi
+# config, byte-identical to the committed copies, so native builds leave a
+# clean tree without any restore step. See
 # internal-docs/async-runtime/implementation.md.
 build-rolldown:
   vp run --filter rolldown build-native:debug
-  git checkout -- packages/rolldown/src/rolldown-binding.wasi-browser.js
 
 # Build `@rolldown/test-dev-server` itself.
 build-rolldown-test-dev-server:
@@ -245,19 +239,20 @@ build-rolldown-wasi:
 
 # Build `rolldown` and its native `.node` binding with the shared async
 # runtime (`--no-default-features --features async-runtime`) instead of tokio.
-# The feature build regenerates two committed files: `binding.d.cts` (doc
-# comments follow the compiled cfg arm) and the browser WASI loader (the same
-# expected drift `build-rolldown` restores — see its comment). Restore both so
+# The feature build regenerates one committed file with expected drift:
+# `binding.d.cts` (doc comments follow the compiled cfg arm). Restore it so
 # the recipe leaves a clean tree.
 build-rolldown-async-runtime:
   vp run --filter rolldown build-binding --no-default-features --features async-runtime
   vp run --filter rolldown build-js-glue
-  git checkout -- packages/rolldown/src/binding.d.cts packages/rolldown/src/rolldown-binding.wasi-browser.js
+  git checkout -- packages/rolldown/src/binding.d.cts
 
-# Build `rolldown` with the non-threaded `.wasm` binding.
+# Build `rolldown` with the non-threaded `.wasm` binding
+# (`rolldown-binding.wasm32-wasip1.wasm` + `rolldown-binding.wasip1.*`
+# loaders; the dist is wired to the single-thread flavor).
 build-rolldown-wasi-single:
   cd packages/rolldown && ./node_modules/.bin/oxnode ./build-binding.ts --target wasm32-wasip1 --no-default-features --features async-runtime
-  cd packages/rolldown && TARGET='rolldown-wasi' node --enable-source-maps --import @oxc-node/core/register -C dev ./build.ts
+  cd packages/rolldown && TARGET='rolldown-wasi-single' node --enable-source-maps --import @oxc-node/core/register -C dev ./build.ts
 
 # Build `rolldown` located in `packages/rolldown` itself and its `.node` binding in release mode.
 build-rolldown-release:

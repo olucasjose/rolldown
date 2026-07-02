@@ -373,18 +373,18 @@ jobs:
         run: just build-browser
 
       # `just build-browser` runs the single-thread (wasm32-wasip1) binding
-      # build, which by design regenerates exactly two committed files in
-      # packages/rolldown/src: rolldown-binding.wasi.cjs (threadless regen of
-      # the committed THREADED node loader) and binding.d.cts (feature-gated
-      # doc-comment drift). Assert that ONLY those allowlisted files changed —
-      # any other packages/rolldown/src drift is unexpected browser-build
-      # codegen drift and must fail here instead of being silently restored —
-      # then restore just the allowlisted files so the `git diff --exit-code`
+      # build. WASI loader regeneration is per-flavor with distinct file names
+      # (rolldown-binding.wasip1.* for this build) and byte-identical to the
+      # committed copies, so the only expected drift is binding.d.cts
+      # (feature-gated doc-comment drift). Assert that ONLY that allowlisted
+      # file changed — any other packages/rolldown/src drift is unexpected
+      # browser-build codegen drift and must fail here instead of being
+      # silently restored — then restore it so the `git diff --exit-code`
       # below keeps guarding the @rolldown/debug (and other) generated code.
       # Threadless-ness of the single-thread loaders is separately guarded by
       # scripts/misc/check-wasi-threadless.mjs in the WASI workflow.
       # See internal-docs/async-runtime/implementation.md.
-      - name: Assert browser-build drift allowlist and restore expected WASI loader regen
+      - name: Assert browser-build drift allowlist and restore expected regen
         run: |
           set -euo pipefail
           changed=()
@@ -395,7 +395,6 @@ jobs:
           for file in "${changed[@]}"; do
             case "$file" in
               packages/rolldown/src/binding.d.cts) ;;
-              packages/rolldown/src/rolldown-binding.wasi.cjs) ;;
               *) unexpected+=("$file") ;;
             esac
           done

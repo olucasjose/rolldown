@@ -107,6 +107,20 @@ single-thread variant. Until those napi-rs CLI changes are published, the
 single-thread build loads the pnpm-patched CLI source from the installed
 package; other build variants use the normal package entry.
 
+Each WASI flavor has its own artifact names end to end (napi CLI
+`parseTriple`: non-threaded `wasm32-wasipX` triples get their own
+`platformArchABI`, threaded flavors keep the legacy `wasm32-wasi` name for
+back-compat):
+
+| Artifact                  | threaded (`wasm32-wasip1-threads`)                  | single-thread (`wasm32-wasip1`)                         |
+| ------------------------- | --------------------------------------------------- | ------------------------------------------------------- |
+| wasm                      | `rolldown-binding.wasm32-wasi.wasm`                 | `rolldown-binding.wasm32-wasip1.wasm`                   |
+| node loader               | `rolldown-binding.wasi.cjs`                         | `rolldown-binding.wasip1.cjs`                           |
+| browser loader            | `rolldown-binding.wasi-browser.js`                  | `rolldown-binding.wasip1-browser.js`                    |
+| deferred (workerd) loader | —                                                   | `rolldown-binding.wasip1-deferred.js`                   |
+| worker scripts            | `wasi-worker.mjs`, `wasi-worker-browser.mjs`        | —                                                       |
+| npm dir / package         | `npm/wasm32-wasi` → `@rolldown/binding-wasm32-wasi` | `npm/wasm32-wasip1` → `@rolldown/binding-wasm32-wasip1` |
+
 Unshared memory growth detaches the previous JavaScript `ArrayBuffer`. The
 emnapi fix in emnapi#220 refreshes TSFN atomic views after event-loop turns and
 refreshes NAPI result DataViews after reentrant JavaScript calls. Rolldown
@@ -124,42 +138,34 @@ The two WASI flavors have distinct artifact sets:
 
 ### Committed WASI loaders and codegen checks
 
-The committed loader set in `packages/rolldown/src` is intentionally mixed
-(RD-14): `rolldown-binding.wasi.cjs` is the THREADED variant (the node wasi
-fallback shipped next to the threaded wasm artifact), while
-`rolldown-binding.wasi-browser.js` is the SINGLE-THREAD variant that
-`@rolldown/browser` ships. No single regeneration mode reproduces both files,
-so the codegen checks are arranged as follows:
+`packages/rolldown/src` commits BOTH flavors' loader sets side by side under
+their per-flavor names (plus `browser.js`, which re-exports the single-thread
+binding package — the browser story). Because the names are distinct, the old
+name-collision guard lattice (restore steps in the justfile, the
+`rolldown-binding.wasi.cjs` arm of the ci.yml drift allowlist, the wasi
+build-order coupling in the WASI workflow) is gone:
 
-- The vendored CLI patch (`patches/@napi-rs__cli@3.7.2.patch`) extends
-  napi-rs#3353: for a build whose target is NOT wasi, `writeWasiBinding`
-  resolves `hasThreads` from the wasi target declared in the package's napi
-  `targets` config (`wasm32-wasip1-threads`, i.e. threaded) instead of the
-  current build triple. Loader regeneration on native builds is therefore
-  deterministic (threaded) on every host. Actual wasi builds keep deriving
-  `hasThreads` from the build triple, so the single-thread pipeline still
-  emits threadless loaders.
-- `just build-rolldown` restores `rolldown-binding.wasi-browser.js` after the
-  build (its committed copy is deliberately the single-thread variant), so
-  native builds leave a clean tree and CI's "Check no diff" in
-  `reusable-native-build.yml` keeps full coverage of everything else,
-  including the threaded node loader.
-- The Node Validation job in `ci.yml` asserts a drift allowlist after
-  `just build-browser` (a single-thread build that by design regenerates
-  exactly two committed files: a threadless `rolldown-binding.wasi.cjs` and a
-  feature-gated `binding.d.cts`): it diffs `packages/rolldown/src`, fails —
-  printing the unexpected file list and their diffs — if anything outside
-  that two-file allowlist changed, and restores only the changed allowlisted
-  files. This keeps the job's `git diff --exit-code` (which guards the
-  `@rolldown/debug` generated code) from being blinded to unexpected
-  browser-build codegen drift, instead of blanket-restoring the directory.
-- The threadless-ness of the single-thread loaders themselves is guarded by
-  `scripts/misc/check-wasi-threadless.mjs` in the WASI workflow, right after
-  `just build-rolldown-wasi-single`.
+- The vendored CLI patch (`patches/@napi-rs__cli@3.7.2.patch`) is a dist
+  rebuild of the napi-rs fork branch (napi-rs#3353 + per-flavor naming): a
+  build whose target is NOT wasi regenerates EVERY declared wasi flavor's
+  loader set, each with `hasThreads` derived from its own triple, so loader
+  regeneration is deterministic and byte-identical to the committed copies on
+  every host and under every build variant. A wasi build regenerates only the
+  flavor being built. No restore steps are needed; CI's "Check no diff" in
+  `reusable-native-build.yml` has full coverage of all committed loaders.
+- The Node Validation job in `ci.yml` still asserts a drift allowlist after
+  `just build-browser`, but the allowlist is down to `binding.d.cts`
+  (feature-gated doc-comment drift only).
+- The threadless-ness of the single-thread loaders is guarded by
+  `scripts/misc/check-wasi-threadless.mjs` in the WASI workflow (it inspects
+  the committed/regenerated `rolldown-binding.wasip1.*` loaders); a wrong
+  `hasThreads` resolution now additionally mis-NAMES the output, so imports
+  fail loudly instead of silently swapping flavors.
 
 Published artifacts never depend on the committed copies: every release
-pipeline regenerates the loaders for its own target right before bundling
-(threaded for the node/wasi packages, threadless for `@rolldown/browser`).
+pipeline regenerates the loaders for its own target right before bundling,
+and `napi artifacts` routes each flavor's wasm + loaders into its own npm dir
+(`npm/wasm32-wasi`, `npm/wasm32-wasip1`) by exact-name match.
 
 ## Metrics And Baseline
 

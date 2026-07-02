@@ -74,6 +74,11 @@ jobs:
             build: |
               vp run --filter rolldown build-binding:wasi:release
 
+          - os: ubuntu-latest
+            target: wasm32-wasip1
+            build: |
+              vp run --filter rolldown build-binding:wasi-single:release
+
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     steps:
@@ -251,6 +256,12 @@ jobs:
       - name: Build `@rolldown/browser`
         # Binaries are built in the previous steps. Unlike in local development, we only need to build the node package itself.
         run: vp run --filter "@rolldown/browser" build:release
+
+      # Publish-path guard: the browser dist ships the single-thread WASI set
+      # (incl. the workerd `wasip1-deferred` loader) — a dropped entry in
+      # copy-addon-plugin.ts must fail HERE, not after publish.
+      - name: Assert `@rolldown/browser` WASI dist file set
+        run: node scripts/misc/check-wasi-dist-files.mjs single packages/browser/dist
 
       - name: Upload `@rolldown/browser` Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

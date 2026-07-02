@@ -22,23 +22,32 @@ const buildMeta = (function makeBuildMeta() {
   // Refer to `rolldown` package
   type TargetRolldownPkg = 'rolldown-pkg';
 
+  // Threaded (wasm32-wasip1-threads) and single-thread (wasm32-wasip1) WASI
+  // dist builds: the artifact sets have distinct per-flavor names, so each
+  // target wires the dist to its own flavor's loaders.
   type TargetRolldownPkgWasi = 'rolldown-pkg-wasi';
+  type TargetRolldownPkgWasiSingle = 'rolldown-pkg-wasi-single';
 
-  const target: TargetBrowserPkg | TargetRolldownPkg | TargetRolldownPkgWasi =
-    (function determineTarget() {
-      switch (process.env.TARGET) {
-        case undefined:
-        case 'rolldown':
-          return 'rolldown-pkg';
-        case 'browser':
-          return 'browser-pkg';
-        case 'rolldown-wasi':
-          return 'rolldown-pkg-wasi';
-        default:
-          console.warn(`Unknown target: ${process.env.TARGET}, defaulting to 'rolldown-pkg'`);
-          return 'rolldown-pkg';
-      }
-    })();
+  const target:
+    | TargetBrowserPkg
+    | TargetRolldownPkg
+    | TargetRolldownPkgWasi
+    | TargetRolldownPkgWasiSingle = (function determineTarget() {
+    switch (process.env.TARGET) {
+      case undefined:
+      case 'rolldown':
+        return 'rolldown-pkg';
+      case 'browser':
+        return 'browser-pkg';
+      case 'rolldown-wasi':
+        return 'rolldown-pkg-wasi';
+      case 'rolldown-wasi-single':
+        return 'rolldown-pkg-wasi-single';
+      default:
+        console.warn(`Unknown target: ${process.env.TARGET}, defaulting to 'rolldown-pkg'`);
+        return 'rolldown-pkg';
+    }
+  })();
 
   const pkgRoot = target === 'browser-pkg' ? nodePath.resolve(__dirname, '../browser') : __dirname;
 
@@ -49,13 +58,28 @@ const buildMeta = (function makeBuildMeta() {
     pkgRoot,
     buildOutputDir: nodePath.resolve(pkgRoot, 'dist'),
     pkgJson: JSON.parse(fs.readFileSync(nodePath.resolve(pkgRoot, 'package.json'), 'utf-8')),
-    desireWasmFiles: target === 'browser-pkg' || target === 'rolldown-pkg-wasi',
+    desireWasmFiles:
+      target === 'browser-pkg' ||
+      target === 'rolldown-pkg-wasi' ||
+      target === 'rolldown-pkg-wasi-single',
+    // `@rolldown/browser` and the wasi-single dist ship the single-thread
+    // (wasm32-wasip1) artifact set; only the threaded wasi dist ships the
+    // threaded (wasm32-wasi) set.
+    wasmSingleThread: target === 'browser-pkg' || target === 'rolldown-pkg-wasi-single',
   };
 })();
 
 const bindingFile = nodePath.resolve('src/binding.cjs');
-const bindingFileWasi = nodePath.resolve('src/rolldown-binding.wasi.cjs');
-const bindingFileWasiBrowser = nodePath.resolve('src/rolldown-binding.wasi-browser.js');
+// per-flavor WASI node loaders: threaded keeps the legacy `wasi` stem,
+// the single-thread flavor has its own distinct `wasip1` stem
+const bindingFileWasi = nodePath.resolve(
+  buildMeta.wasmSingleThread ? 'src/rolldown-binding.wasip1.cjs' : 'src/rolldown-binding.wasi.cjs',
+);
+const bindingFileWasiBrowser = nodePath.resolve(
+  buildMeta.wasmSingleThread
+    ? 'src/rolldown-binding.wasip1-browser.js'
+    : 'src/rolldown-binding.wasi-browser.js',
+);
 
 const configs: BuildOptions[] = [
   withShared({
@@ -127,7 +151,7 @@ function withShared({
     },
     external: [
       /@rolldown\/binding-.*/,
-      /rolldown-binding\.wasi\.cjs/,
+      /rolldown-binding\.(wasi|wasip1)\.cjs/,
       ...Object.keys(buildMeta.pkgJson.dependencies ?? {}),
     ],
     // Do not move this line up or down, it's here for a reason
@@ -138,6 +162,7 @@ function withShared({
         isCI: buildMeta.isCI,
         isReleasingPkgInCI: buildMeta.isReleasingPkgInCI,
         desireWasmFiles: buildMeta.desireWasmFiles,
+        wasmSingleThread: buildMeta.wasmSingleThread,
       }),
       isBrowserBuild && removeBuiltModules(),
       options.plugins,

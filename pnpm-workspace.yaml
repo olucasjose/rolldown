@@ -142,10 +142,14 @@ minimumReleaseAgeExclude:
 
 patchedDependencies:
   '@emnapi/core@1.11.2': patches/@emnapi__core@1.11.2.patch
-  # TEMP: vendors napi-rs#3353 (wasm32-wasip1 single-thread support) plus a local
-  # writeWasiBinding extension: non-wasi builds resolve `hasThreads` from the wasi
-  # target declared in the napi `targets` config instead of the build triple, so
-  # native builds regenerate the loaders deterministically (threaded) — see
-  # internal-docs/async-runtime/implementation.md. Remove once @napi-rs/cli ships
-  # both upstream.
+  # TEMP: vendors napi-rs#3353 (wasm32-wasip1 single-thread support incl. the
+  # deferred workerd-safe loader) with per-flavor WASI artifact naming: the
+  # threaded flavor keeps the legacy `wasm32-wasi` names, the single-thread
+  # flavor gets its own `wasm32-wasip1` / `wasip1` names, and non-wasi builds
+  # regenerate EVERY declared flavor's loader set deterministically — see
+  # internal-docs/async-runtime/implementation.md. Regenerated from the
+  # napi-rs fork branch `feat/non-threaded-wasi` (dist rebuild of
+  # dist/index.cjs + dist/index.js + dist/cli.js — cli.js is the standalone
+  # bundle behind the `napi` bin used by the publish workflows). Remove once
+  # @napi-rs/cli ships it upstream.
   '@napi-rs/cli@3.7.2': patches/@napi-rs__cli@3.7.2.patch

@@ -538,17 +538,52 @@ const forceWasi =
 if (!nativeBinding || forceWasi) {
   let wasiBinding = null
   let wasiBindingError = null
-  try {
-    wasiBinding = require('./rolldown-binding.wasi.cjs')
-    nativeBinding = wasiBinding
-  } catch (err) {
-    if (forceWasi) {
-      wasiBindingError = err
+  if (!wasiBinding) {
+    try {
+      wasiBinding = require('./rolldown-binding.wasi.cjs')
+      nativeBinding = wasiBinding
+    } catch (err) {
+      if (forceWasi) {
+        if (!wasiBindingError) {
+          wasiBindingError = err
+        } else {
+          wasiBindingError.cause = err
+        }
+      }
     }
   }
-  if (!nativeBinding || forceWasi) {
+  if (!wasiBinding) {
     try {
       wasiBinding = require('@rolldown/binding-wasm32-wasi')
+      nativeBinding = wasiBinding
+    } catch (err) {
+      if (forceWasi) {
+        if (!wasiBindingError) {
+          wasiBindingError = err
+        } else {
+          wasiBindingError.cause = err
+        }
+        loadErrors.push(err)
+      }
+    }
+  }
+  if (!wasiBinding) {
+    try {
+      wasiBinding = require('./rolldown-binding.wasip1.cjs')
+      nativeBinding = wasiBinding
+    } catch (err) {
+      if (forceWasi) {
+        if (!wasiBindingError) {
+          wasiBindingError = err
+        } else {
+          wasiBindingError.cause = err
+        }
+      }
+    }
+  }
+  if (!wasiBinding) {
+    try {
+      wasiBinding = require('@rolldown/binding-wasm32-wasip1')
       nativeBinding = wasiBinding
     } catch (err) {
       if (forceWasi) {
