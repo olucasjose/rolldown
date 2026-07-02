@@ -76,12 +76,13 @@ jobs:
         run: vp run --filter '@rolldown/test-dev-server' build
 
       # Full node suite against the single-thread WASI binding (the dist is
-      # wired to the wasip1 loaders by `build-rolldown-wasi-single`). The wasm
-      # binding reports the CurrentThread flavor, so all `isSingleThread`
-      # skips apply; `ROLLDOWN_TEST_WASI=1` additionally gates the
-      # wasm-boundary-specific skips (see tests/src/runtime-flavor.ts).
+      # wired to the wasip1 loaders by `build-rolldown-wasi-single`). No lane
+      # env vars: the artifact self-identifies through
+      # `getRuntimeCapabilities()` -- it reports the CurrentThread flavor (all
+      # `isSingleThread` skips apply) and the wasi target (all wasm-boundary
+      # `isWasiTest` skips apply); see tests/src/runtime-flavor.ts.
       - name: Node Test (single-thread WASI)
-        run: ROLLDOWN_TEST_WASI=1 vp run --filter rolldown-tests test:main
+        run: vp run --filter rolldown-tests test:main
 
       # `@example/typescript` is excluded because its config enables `devtools`, which currently
       # panics under WASI when the writer tries to open its log file (crates/rolldown_devtools/src/writer.rs).
