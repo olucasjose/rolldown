@@ -43,10 +43,17 @@
         "src/cli/index.ts",
         "src/log/locate-character/index.d.ts",
         "src/rolldown-binding.wasi-browser.js",
+        "src/rolldown-binding.wasip1-browser.js",
+        "src/rolldown-binding.wasip1-deferred.js",
         "src/{wasi,webcontainer}-*.*",
         "src/api/experimental.ts",
       ],
-      "ignore": ["src/binding.cjs", "src/rolldown-binding.wasi.cjs", "src/browser.js"],
+      "ignore": [
+        "src/binding.cjs",
+        "src/rolldown-binding.wasi.cjs",
+        "src/rolldown-binding.wasip1.cjs",
+        "src/browser.js",
+      ],
       "ignoreDependencies": ["@rollup/plugin-json", "buble", "pathe"],
     },
     "packages/rolldown/npm/wasm32-wasi": {
