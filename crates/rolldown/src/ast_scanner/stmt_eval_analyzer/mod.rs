@@ -1,9 +1,9 @@
 use oxc::ast::ast::{
   self, Argument, AssignmentTarget, BindingPattern, CallExpression, ChainElement, Expression,
-  IdentifierReference, UnaryOperator, VariableDeclarationKind,
+  ForStatementInit, IdentifierReference, PropertyKey, UnaryOperator, VariableDeclarationKind,
 };
 use oxc::ast::match_member_expression;
-use oxc::semantic::{NodeId, SymbolId};
+use oxc::semantic::{NodeId, SymbolFlags, SymbolId};
 use oxc_ecmascript::GlobalContext;
 use oxc_ecmascript::side_effects::{
   MayHaveSideEffects, MayHaveSideEffectsContext, PropertyReadSideEffects,
@@ -78,6 +78,22 @@ impl<'a> StmtEvalAnalyzer<'a> {
     Some(namespace_ids.contains(&symbol_id))
   }
 
+  fn is_namespace_import_symbol(&self, symbol_id: SymbolId) -> bool {
+    self.namespace_object_symbol_ids.is_some_and(|set| set.contains(&symbol_id))
+  }
+
+  fn symbol_id_for_reference(&self, ident_ref: &IdentifierReference) -> Option<SymbolId> {
+    ident_ref.reference_id.get().and_then(|ref_id| self.scope.symbol_id_for(ref_id))
+  }
+
+  fn is_import_binding_read(&self, ident_ref: &IdentifierReference) -> bool {
+    let Some(symbol_id) = self.symbol_id_for_reference(ident_ref) else {
+      return false;
+    };
+    self.scope.scoping().symbol_flags(symbol_id).contains(SymbolFlags::Import)
+      && !self.is_namespace_import_symbol(symbol_id)
+  }
+
   fn analyze_member_expr(&self, member_expr: &ast::MemberExpression) -> StmtEvalFlags {
     if self.is_expr_manual_pure_functions(member_expr.object()) {
       return false.into();
@@ -86,10 +102,12 @@ impl<'a> StmtEvalAnalyzer<'a> {
     // on them are guaranteed side-effect-free. A computed key is still evaluated,
     // though, and may have its own side effects (e.g. `ns[foo()]`).
     if self.is_namespace_member_access(member_expr) == Some(true) {
-      return match member_expr {
+      let mut detail = StmtEvalFlags::ImportBindingRead;
+      detail |= match member_expr {
         ast::MemberExpression::ComputedMemberExpression(e) => self.analyze_expr(&e.expression),
-        _ => false.into(),
+        _ => StmtEvalFlags::empty(),
       };
+      return detail;
     }
     // Only `import.meta.url` is a spec-defined side-effect-free property read.
     // Other accesses like `import.meta.hot.accept()` may have side effects.
@@ -104,6 +122,12 @@ impl<'a> StmtEvalAnalyzer<'a> {
     let has_side_effect = member_expr.may_have_side_effects(self);
     let mut detail = StmtEvalFlags::from(has_side_effect);
     detail.set(StmtEvalFlags::GlobalVarAccess, is_global);
+    if !has_side_effect {
+      detail |= self.analyze_expr(member_expr.object()) - StmtEvalFlags::UnknownSideEffect;
+      if let ast::MemberExpression::ComputedMemberExpression(e) = member_expr {
+        detail |= self.analyze_expr(&e.expression) - StmtEvalFlags::UnknownSideEffect;
+      }
+    }
     detail
   }
 
@@ -245,6 +269,7 @@ impl<'a> StmtEvalAnalyzer<'a> {
         detail
       }
       Expression::CallExpression(expr) => self.analyze_call_expr(expr),
+      Expression::ClassExpression(class) => self.analyze_class(class),
 
       // Transparent wrappers: oxc validates the boolean side-effect status,
       // we then recurse children to harvest metadata flags
@@ -353,7 +378,90 @@ impl<'a> StmtEvalAnalyzer<'a> {
   fn analyze_decl(&self, decl: &ast::Declaration) -> StmtEvalFlags {
     match decl {
       ast::Declaration::VariableDeclaration(var_decl) => self.analyze_var_decl(var_decl),
+      ast::Declaration::ClassDeclaration(class) => self.analyze_class(class),
       _ => decl.may_have_side_effects(self).into(),
+    }
+  }
+
+  fn analyze_class(&self, class: &ast::Class) -> StmtEvalFlags {
+    let mut detail = StmtEvalFlags::from(class.may_have_side_effects(self));
+
+    for decorator in &class.decorators {
+      detail |= self.analyze_expr(&decorator.expression);
+    }
+    if let Some(super_class) = &class.super_class {
+      detail |= self.analyze_expr(super_class);
+    }
+
+    for element in &class.body.body {
+      detail |= match element {
+        ast::ClassElement::StaticBlock(block) => {
+          let mut block_detail = StmtEvalFlags::empty();
+          for stmt in &block.body {
+            block_detail |= self.analyze_stmt(stmt);
+            if block_detail.has_side_effect_for_tree_shaking() {
+              break;
+            }
+          }
+          block_detail
+        }
+        ast::ClassElement::MethodDefinition(method) => {
+          let mut method_detail = StmtEvalFlags::empty();
+          for decorator in &method.decorators {
+            method_detail |= self.analyze_expr(&decorator.expression);
+          }
+          if method.computed {
+            method_detail |= self.analyze_property_key(&method.key);
+          }
+          method_detail
+        }
+        ast::ClassElement::PropertyDefinition(property) => {
+          let mut property_detail = StmtEvalFlags::empty();
+          for decorator in &property.decorators {
+            property_detail |= self.analyze_expr(&decorator.expression);
+          }
+          if property.computed {
+            property_detail |= self.analyze_property_key(&property.key);
+          }
+          if property.r#static
+            && let Some(value) = &property.value
+          {
+            property_detail |= self.analyze_expr(value);
+          }
+          property_detail
+        }
+        ast::ClassElement::AccessorProperty(property) => {
+          let mut property_detail = StmtEvalFlags::empty();
+          for decorator in &property.decorators {
+            property_detail |= self.analyze_expr(&decorator.expression);
+          }
+          if property.computed {
+            property_detail |= self.analyze_property_key(&property.key);
+          }
+          if property.r#static
+            && let Some(value) = &property.value
+          {
+            property_detail |= self.analyze_expr(value);
+          }
+          property_detail
+        }
+        ast::ClassElement::TSIndexSignature(_) => true.into(),
+      };
+
+      if detail.has_side_effect_for_tree_shaking() {
+        break;
+      }
+    }
+
+    detail
+  }
+
+  fn analyze_property_key(&self, key: &ast::PropertyKey) -> StmtEvalFlags {
+    match key {
+      key @ oxc::ast::match_expression!(PropertyKey) => self.analyze_expr(key.to_expression()),
+      ast::PropertyKey::StaticIdentifier(_) | ast::PropertyKey::PrivateIdentifier(_) => {
+        StmtEvalFlags::empty()
+      }
     }
   }
 
@@ -383,6 +491,15 @@ impl<'a> StmtEvalAnalyzer<'a> {
     detail
   }
 
+  fn analyze_for_init(&self, init: &ast::ForStatementInit) -> StmtEvalFlags {
+    match init {
+      ast::ForStatementInit::VariableDeclaration(decl) => self.analyze_var_decl(decl),
+      init @ oxc::ast::match_expression!(ForStatementInit) => {
+        self.analyze_expr(init.to_expression())
+      }
+    }
+  }
+
   fn analyze_identifier(&self, ident_ref: &IdentifierReference) -> StmtEvalFlags {
     let is_global = self.is_unresolved_reference(ident_ref);
     // Delegate side-effect bool to Oxc (checks known globals, unknown_global_side_effects)
@@ -390,6 +507,7 @@ impl<'a> StmtEvalAnalyzer<'a> {
     let mut detail = StmtEvalFlags::from(has_side_effect);
     // METADATA: GlobalVarAccess
     detail.set(StmtEvalFlags::GlobalVarAccess, is_global);
+    detail.set(StmtEvalFlags::ImportBindingRead, self.is_import_binding_read(ident_ref));
     detail
   }
 
@@ -413,9 +531,7 @@ impl<'a> StmtEvalAnalyzer<'a> {
             self.analyze_expr(decl.to_expression())
           }
           ast::ExportDefaultDeclarationKind::FunctionDeclaration(_) => false.into(),
-          ast::ExportDefaultDeclarationKind::ClassDeclaration(decl) => {
-            decl.may_have_side_effects(self).into()
-          }
+          ast::ExportDefaultDeclarationKind::ClassDeclaration(decl) => self.analyze_class(decl),
           ast::ExportDefaultDeclarationKind::TSInterfaceDeclaration(_) => true.into(),
         }
       }
@@ -461,6 +577,32 @@ impl<'a> StmtEvalAnalyzer<'a> {
         ret_stmt.argument.as_ref().map(|expr| self.analyze_expr(expr)).unwrap_or(false.into())
       }
       Statement::LabeledStatement(labeled_stmt) => self.analyze_stmt(&labeled_stmt.body),
+      Statement::ForStatement(for_stmt) => {
+        let infinite_loop = for_stmt.test.is_none().then_some(StmtEvalFlags::UnknownSideEffect);
+        for_stmt.init.as_ref().map(|init| self.analyze_for_init(init)).unwrap_or(false.into())
+          | infinite_loop.unwrap_or(false.into())
+          | for_stmt.test.as_ref().map(|expr| self.analyze_expr(expr)).unwrap_or(false.into())
+          | for_stmt.update.as_ref().map(|expr| self.analyze_expr(expr)).unwrap_or(false.into())
+          | self.analyze_stmt(&for_stmt.body)
+      }
+      Statement::ForInStatement(for_in_stmt) => {
+        StmtEvalFlags::UnknownSideEffect
+          | self.analyze_expr(&for_in_stmt.right)
+          | self.analyze_stmt(&for_in_stmt.body)
+      }
+      Statement::ForOfStatement(for_of_stmt) => {
+        StmtEvalFlags::UnknownSideEffect
+          | self.analyze_expr(&for_of_stmt.right)
+          | self.analyze_stmt(&for_of_stmt.body)
+      }
+      Statement::ThrowStatement(throw_stmt) => {
+        StmtEvalFlags::UnknownSideEffect | self.analyze_expr(&throw_stmt.argument)
+      }
+      Statement::WithStatement(with_stmt) => {
+        StmtEvalFlags::UnknownSideEffect
+          | self.analyze_expr(&with_stmt.object)
+          | self.analyze_stmt(&with_stmt.body)
+      }
       Statement::TryStatement(try_stmt) => {
         let mut detail = self.analyze_block(&try_stmt.block);
         detail |= try_stmt
@@ -496,7 +638,7 @@ impl<'a> StmtEvalAnalyzer<'a> {
         detail
       }
       // Everything else: delegate to Oxc.
-      // This covers Empty, Continue, Break, Debugger, For/ForIn/ForOf, Throw, With.
+      // This covers Empty, Continue, Break, Debugger.
       _ => stmt.may_have_side_effects(self).into(),
     }
   }
@@ -606,46 +748,100 @@ mod test {
   use std::sync::Arc;
 
   use itertools::Itertools;
-  use oxc::{parser::Parser, span::SourceType};
-  use rolldown_common::{AstScopes, NormalizedBundlerOptions, StmtEvalFlags};
+  use oxc::{ast::ast, parser::Parser, semantic::SymbolId, span::SourceType};
+  use rolldown_common::{
+    AstScopes, InnerOptions, NormalizedBundlerOptions, PropertyReadSideEffects, StmtEvalFlags,
+  };
   use rolldown_ecmascript::{EcmaAst, EcmaCompiler};
+  use rustc_hash::FxHashSet;
 
   use super::StmtEvalAnalyzer;
   use rolldown_common::FlatOptions;
 
+  fn collect_namespace_import_symbol_ids(program: &ast::Program) -> FxHashSet<SymbolId> {
+    let mut namespace_object_symbol_ids = FxHashSet::default();
+    for stmt in &program.body {
+      let Some(ast::ModuleDeclaration::ImportDeclaration(decl)) = stmt.as_module_declaration()
+      else {
+        continue;
+      };
+      let Some(specifiers) = &decl.specifiers else { continue };
+      for spec in specifiers {
+        if let ast::ImportDeclarationSpecifier::ImportNamespaceSpecifier(spec) = spec {
+          namespace_object_symbol_ids.insert(spec.local.symbol_id());
+        }
+      }
+    }
+    namespace_object_symbol_ids
+  }
+
   fn has_side_effect_for_tree_shaking(code: &str) -> bool {
+    has_side_effect_for_tree_shaking_with_options(code, NormalizedBundlerOptions::default())
+  }
+
+  fn has_side_effect_for_tree_shaking_with_options(
+    code: &str,
+    options: NormalizedBundlerOptions,
+  ) -> bool {
     let source_type = SourceType::tsx();
     let ast = EcmaCompiler::parse("<Noop>", code, source_type).unwrap();
     let semantic = EcmaAst::make_semantic(ast.program());
+    let namespace_object_symbol_ids = collect_namespace_import_symbol_ids(ast.program());
     let scoping = semantic.into_scoping();
     let ast_scopes = AstScopes::new(scoping);
 
-    let options = Arc::new(NormalizedBundlerOptions::default());
+    let options = Arc::new(options);
     let flags = FlatOptions::from_shared_options(&options);
     ast.program().body.iter().any(|stmt| {
-      StmtEvalAnalyzer::new(&ast_scopes, flags, &options, None, None)
+      StmtEvalAnalyzer::new(&ast_scopes, flags, &options, None, Some(&namespace_object_symbol_ids))
         .analyze_stmt(stmt)
         .has_side_effect_for_tree_shaking()
     })
   }
 
   fn get_stmt_eval_flags(code: &str) -> Vec<StmtEvalFlags> {
+    get_stmt_eval_flags_with_options(code, NormalizedBundlerOptions::default())
+  }
+
+  fn get_stmt_eval_flags_with_options(
+    code: &str,
+    options: NormalizedBundlerOptions,
+  ) -> Vec<StmtEvalFlags> {
     let source_type = SourceType::tsx();
     let ast = EcmaCompiler::parse("<Noop>", code, source_type).unwrap();
     let semantic = EcmaAst::make_semantic(ast.program());
+    let namespace_object_symbol_ids = collect_namespace_import_symbol_ids(ast.program());
     let scoping = semantic.into_scoping();
     let ast_scopes = AstScopes::new(scoping);
 
-    let options = Arc::new(NormalizedBundlerOptions::default());
+    let options = Arc::new(options);
     let flags = FlatOptions::from_shared_options(&options);
     ast
       .program()
       .body
       .iter()
       .map(|stmt| {
-        StmtEvalAnalyzer::new(&ast_scopes, flags, &options, None, None).analyze_stmt(stmt)
+        StmtEvalAnalyzer::new(
+          &ast_scopes,
+          flags,
+          &options,
+          None,
+          Some(&namespace_object_symbol_ids),
+        )
+        .analyze_stmt(stmt)
       })
       .collect_vec()
+  }
+
+  fn options_with_property_read_side_effects_false() -> NormalizedBundlerOptions {
+    NormalizedBundlerOptions {
+      treeshake: InnerOptions {
+        property_read_side_effects: Some(PropertyReadSideEffects::False),
+        ..Default::default()
+      }
+      .into(),
+      ..Default::default()
+    }
   }
 
   #[test]
@@ -1265,6 +1461,84 @@ mod test {
     assert_eq!(
       get_stmt_eval_flags("export default { foo: () => /* @__PURE__ */ pureCall() }"),
       vec![StmtEvalFlags::empty()]
+    );
+  }
+
+  #[test]
+  fn test_import_binding_read_marks_execution_order_metadata() {
+    assert_eq!(
+      get_stmt_eval_flags("import { counter } from './state'; export const snap = counter;"),
+      vec![StmtEvalFlags::empty(), StmtEvalFlags::ImportBindingRead]
+    );
+
+    assert_eq!(
+      get_stmt_eval_flags("import { obj } from './state'; export const snap = obj.value;"),
+      vec![StmtEvalFlags::empty(), StmtEvalFlags::UnknownSideEffect]
+    );
+
+    assert_eq!(
+      get_stmt_eval_flags_with_options(
+        "import { obj } from './state'; export const snap = obj.value;",
+        options_with_property_read_side_effects_false()
+      ),
+      vec![StmtEvalFlags::empty(), StmtEvalFlags::ImportBindingRead]
+    );
+    assert!(!has_side_effect_for_tree_shaking_with_options(
+      "import { obj } from './state'; export const snap = obj.value;",
+      options_with_property_read_side_effects_false()
+    ));
+
+    assert_eq!(
+      get_stmt_eval_flags("export const snap = counter; import { counter } from './state';"),
+      vec![StmtEvalFlags::ImportBindingRead, StmtEvalFlags::empty()]
+    );
+
+    assert_eq!(
+      get_stmt_eval_flags("import { counter } from './state'; if (counter) { }"),
+      vec![StmtEvalFlags::empty(), StmtEvalFlags::ImportBindingRead]
+    );
+
+    assert_eq!(
+      get_stmt_eval_flags("import { counter } from './state'; for (; counter;) break;"),
+      vec![StmtEvalFlags::empty(), StmtEvalFlags::ImportBindingRead]
+    );
+
+    assert_eq!(
+      get_stmt_eval_flags("import { counter } from './state'; class C { static x = counter }"),
+      vec![StmtEvalFlags::empty(), StmtEvalFlags::ImportBindingRead]
+    );
+  }
+
+  #[test]
+  fn test_import_binding_read_does_not_enter_function_body() {
+    assert_eq!(
+      get_stmt_eval_flags(
+        "import { counter } from './state'; export function read() { return counter; }"
+      ),
+      vec![StmtEvalFlags::empty(), StmtEvalFlags::empty()]
+    );
+
+    assert_eq!(
+      get_stmt_eval_flags("import { counter } from './state'; export const read = () => counter;"),
+      vec![StmtEvalFlags::empty(), StmtEvalFlags::empty()]
+    );
+  }
+
+  #[test]
+  fn test_namespace_import_member_read_marks_execution_order_metadata() {
+    assert_eq!(
+      get_stmt_eval_flags("import * as ns from './state'; export const snap = ns.counter;"),
+      vec![StmtEvalFlags::empty(), StmtEvalFlags::ImportBindingRead]
+    );
+
+    assert_eq!(
+      get_stmt_eval_flags("export const snap = ns.counter; import * as ns from './state';"),
+      vec![StmtEvalFlags::ImportBindingRead, StmtEvalFlags::empty()]
+    );
+
+    assert_eq!(
+      get_stmt_eval_flags("import * as ns from './state'; export const namespace = ns;"),
+      vec![StmtEvalFlags::empty(), StmtEvalFlags::empty()]
     );
   }
 

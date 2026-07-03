@@ -2225,7 +2225,6 @@ export interface BindingExperimentalOptions {
   attachDebugInfo?: BindingAttachDebugInfo
   chunkModulesOrder?: BindingChunkModuleOrderBy
   chunkImportMap?: boolean | BindingChunkImportMap
-  onDemandWrapping?: boolean
   incrementalBuild?: boolean
   nativeMagicString?: boolean
   chunkOptimization?: boolean | BindingChunkOptimizationOptions

@@ -15,6 +15,12 @@ bitflags! {
         const UnknownSideEffect = 1 << 2;
         /// A call/new expression was marked pure by an annotation or cross-module analysis.
         const PureAnnotation = 1 << 3;
+        /// Reads an imported binding value while evaluating the statement.
+        ///
+        /// This is not a tree-shaking side effect. It only means moving the statement can change
+        /// the value it observes, so strict execution order must treat the statement as
+        /// execution-order-sensitive.
+        const ImportBindingRead = 1 << 4;
     }
 }
 

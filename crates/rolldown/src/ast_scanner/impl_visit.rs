@@ -91,7 +91,8 @@ impl<'me, 'ast: 'me> Visit<'ast> for AstScanner<'me, 'ast> {
       if self.current_stmt_info.eval_flags.intersects(
         StmtEvalFlags::UnknownSideEffect
           | StmtEvalFlags::GlobalVarAccess
-          | StmtEvalFlags::PureAnnotation,
+          | StmtEvalFlags::PureAnnotation
+          | StmtEvalFlags::ImportBindingRead,
       ) {
         self.result.ecma_view_meta.insert(EcmaViewMeta::ExecutionOrderSensitive);
       }

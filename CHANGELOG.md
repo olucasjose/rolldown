@@ -1,4 +1,10 @@
 
+## [Unreleased]
+
+### 🚀 Features
+
+- strictExecutionOrder: wrap only modules whose chunk placement can reorder eager ESM execution
+
 ## [1.1.4] - 2026-07-01
 
 ### 🚀 Features
