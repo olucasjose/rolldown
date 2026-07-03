@@ -258,8 +258,13 @@ jobs:
         run: vp run --filter "@rolldown/browser" build:release
 
       # Publish-path guard: the browser dist ships the single-thread WASI set
-      # (incl. the workerd `wasip1-deferred` loader) — a dropped entry in
-      # copy-addon-plugin.ts must fail HERE, not after publish.
+      # (incl. the `wasip1-deferred` loader, carried for single-flavor
+      # set-consistency only — it is NOT a `@rolldown/browser` exports entry;
+      # workerd users consume it from the generated
+      # `@rolldown/binding-wasm32-wasip1` package, whose lack of an `exports`
+      # field allows the deep imports the upstream workerd/miniflare test
+      # uses) — a dropped entry in copy-addon-plugin.ts must fail HERE, not
+      # after publish.
       - name: Assert `@rolldown/browser` WASI dist file set
         run: node scripts/misc/check-wasi-dist-files.mjs single packages/browser/dist
 

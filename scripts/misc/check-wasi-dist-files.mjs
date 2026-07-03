@@ -1,15 +1,24 @@
 // Guard that a built dist contains EXACTLY the expected WASI artifact set for
 // its flavor. The set is copied into dist by
 // packages/rolldown/copy-addon-plugin.ts; if that list ever drops a file (as
-// happened with the workerd `wasip1-deferred` loader) the package silently
+// happened with the `wasip1-deferred` loader) the package silently
 // ships without it while every build stays green. This check holds its OWN
 // copy of the canonical per-flavor sets (the naming matrix in
 // internal-docs/async-runtime/implementation.md) so drift in the plugin's
 // list fails loudly here.
 //
+// NOTE on the `wasip1-deferred` loader: the single-flavor dists carry it for
+// set-consistency only. `@rolldown/browser` deliberately exposes no `exports`
+// entry for it (or for the wasm), so it is unreachable there by design; the
+// supported workerd consumption path is the generated
+// `@rolldown/binding-wasm32-wasip1` package, which has no `exports` field and
+// therefore allows the deep imports the upstream workerd/miniflare test uses
+// (`import { instantiate } from
+// '@rolldown/binding-wasm32-wasip1/rolldown-binding.wasip1-deferred.js'`).
+//
 // Usage: node scripts/misc/check-wasi-dist-files.mjs <threaded|single> [distDir]
 //   flavor   threaded = wasm32-wasip1-threads dist (legacy `wasi` names)
-//            single   = wasm32-wasip1 dist (`wasip1` names, workerd loader,
+//            single   = wasm32-wasip1 dist (`wasip1` names, deferred loader,
 //                       no worker scripts)
 //   distDir  defaults to packages/rolldown/dist (repo-relative); pass
 //            packages/browser/dist for the @rolldown/browser publish path.
