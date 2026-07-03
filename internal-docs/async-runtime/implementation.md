@@ -159,7 +159,7 @@ build-order coupling in the WASI workflow) is gone:
 - The threadless-ness of the single-thread loaders is guarded by
   `scripts/misc/check-wasi-threadless.mjs` in the WASI workflow (it inspects
   the committed/regenerated `rolldown-binding.wasip1.*` loaders); a wrong
-  `hasThreads` resolution now additionally mis-NAMES the output, so imports
+  `hasThreads` resolution now additionally misnames the output, so imports
   fail loudly instead of silently swapping flavors.
 
 Published artifacts never depend on the committed copies: every release
