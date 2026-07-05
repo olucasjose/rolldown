@@ -240,6 +240,7 @@ overrides:
 
 patchedDependencies:
   '@emnapi/core@1.11.2': 321ae81a2c80e656f3d9c689d3e4a61eb22027033415fa345f40b56b1671d5e4
+  '@napi-rs/cli@3.7.2': 813ced9182d12b06f9fcb77d0e18f18800244faa1847204f63053156f7d62cd1
 
 importers:
 
@@ -548,7 +549,7 @@ importers:
         version: 1.11.2
       '@napi-rs/cli':
         specifier: 'catalog:'
-        version: 3.7.2(@emnapi/core@1.11.2(patch_hash=321ae81a2c80e656f3d9c689d3e4a61eb22027033415fa345f40b56b1671d5e4))(@emnapi/runtime@1.11.2)(@types/node@24.10.3)
+        version: 3.7.2(patch_hash=813ced9182d12b06f9fcb77d0e18f18800244faa1847204f63053156f7d62cd1)(@emnapi/core@1.11.2(patch_hash=321ae81a2c80e656f3d9c689d3e4a61eb22027033415fa345f40b56b1671d5e4))(@emnapi/runtime@1.11.2)(@types/node@24.10.3)(supports-color@8.1.1)
       '@napi-rs/wasm-runtime':
         specifier: 'catalog:'
         version: 1.1.6(@emnapi/core@1.11.2(patch_hash=321ae81a2c80e656f3d9c689d3e4a61eb22027033415fa345f40b56b1671d5e4))(@emnapi/runtime@1.11.2)
@@ -10477,10 +10478,10 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@napi-rs/cli@3.7.2(@emnapi/core@1.11.2(patch_hash=321ae81a2c80e656f3d9c689d3e4a61eb22027033415fa345f40b56b1671d5e4))(@emnapi/runtime@1.11.2)(@types/node@24.10.3)':
+  '@napi-rs/cli@3.7.2(patch_hash=813ced9182d12b06f9fcb77d0e18f18800244faa1847204f63053156f7d62cd1)(@emnapi/core@1.11.2(patch_hash=321ae81a2c80e656f3d9c689d3e4a61eb22027033415fa345f40b56b1671d5e4))(@emnapi/runtime@1.11.2)(@types/node@24.10.3)(supports-color@8.1.1)':
     dependencies:
       '@inquirer/prompts': 8.5.2(@types/node@24.10.3)
-      '@napi-rs/cross-toolchain': 1.0.3(@emnapi/core@1.11.2(patch_hash=321ae81a2c80e656f3d9c689d3e4a61eb22027033415fa345f40b56b1671d5e4))(@emnapi/runtime@1.11.2)
+      '@napi-rs/cross-toolchain': 1.0.3(@emnapi/core@1.11.2(patch_hash=321ae81a2c80e656f3d9c689d3e4a61eb22027033415fa345f40b56b1671d5e4))(@emnapi/runtime@1.11.2)(supports-color@8.1.1)
       '@napi-rs/wasm-tools': 1.0.1(@emnapi/core@1.11.2(patch_hash=321ae81a2c80e656f3d9c689d3e4a61eb22027033415fa345f40b56b1671d5e4))(@emnapi/runtime@1.11.2)
       '@octokit/rest': 22.0.1
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -10509,7 +10510,7 @@ snapshots:
       - node-addon-api
       - supports-color
 
-  '@napi-rs/cross-toolchain@1.0.3(@emnapi/core@1.11.2(patch_hash=321ae81a2c80e656f3d9c689d3e4a61eb22027033415fa345f40b56b1671d5e4))(@emnapi/runtime@1.11.2)':
+  '@napi-rs/cross-toolchain@1.0.3(@emnapi/core@1.11.2(patch_hash=321ae81a2c80e656f3d9c689d3e4a61eb22027033415fa345f40b56b1671d5e4))(@emnapi/runtime@1.11.2)(supports-color@8.1.1)':
     dependencies:
       '@napi-rs/lzma': 1.4.5(@emnapi/core@1.11.2(patch_hash=321ae81a2c80e656f3d9c689d3e4a61eb22027033415fa345f40b56b1671d5e4))(@emnapi/runtime@1.11.2)
       '@napi-rs/tar': 1.1.0(@emnapi/core@1.11.2(patch_hash=321ae81a2c80e656f3d9c689d3e4a61eb22027033415fa345f40b56b1671d5e4))(@emnapi/runtime@1.11.2)
