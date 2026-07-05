@@ -126,9 +126,9 @@ verifyDepsBeforeRun: install
 minimumReleaseAgeExclude:
   - '@napi-rs/cli@3.7.2'
   - '@napi-rs/wasm-runtime@1.1.6'
-  - '@emnapi/core@1.11.1'
-  - '@emnapi/runtime@1.11.1'
-  - emnapi@1.11.1
+  - '@emnapi/core@1.11.2'
+  - '@emnapi/runtime@1.11.2'
+  - emnapi@1.11.2
   - '@oxc-minify/*'
   - '@oxc-parser/*'
   - '@oxc-transform/*'
@@ -141,4 +141,4 @@ minimumReleaseAgeExclude:
   - vitepress-plugin-feedback-tracker@0.2.0-alpha.1
 
 patchedDependencies:
-  '@emnapi/core@1.11.1': patches/@emnapi__core@1.11.1.patch
+  '@emnapi/core@1.11.2': patches/@emnapi__core@1.11.2.patch
