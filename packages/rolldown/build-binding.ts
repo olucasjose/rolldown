@@ -52,12 +52,15 @@ if (argsOptions.release === true || argsOptions.profile === 'release') {
 // `-Z build-std` on the pinned stable toolchain, the `rust-src` component (installed by the
 // release workflow), and an explicit `--target`. Scoped to the `release` profile so the
 // wasi build (`release-wasi`), which shares this script and the workflow env, keeps its
-// prebuilt std. Behavior change in shipped binaries: `RUST_BACKTRACE=1` prints unsymbolized
-// frames; panic message + source location are kept.
+// prebuilt std; wasm targets are also excluded explicitly because they are `panic=abort`
+// targets where `std,panic_unwind` would be the wrong panic runtime. Behavior change in
+// shipped binaries: `RUST_BACKTRACE=1` prints unsymbolized frames; panic message + source
+// location are kept.
 // Measured on aarch64-apple-darwin: −162 KiB stripped, unwinding machinery verified intact.
 if (
   process.env.ROLLDOWN_BUILD_STD === '1' &&
-  (argsOptions.release === true || argsOptions.profile === 'release')
+  (argsOptions.release === true || argsOptions.profile === 'release') &&
+  !argsOptions.target?.startsWith('wasm')
 ) {
   if (argsOptions.target) {
     process.env.RUSTC_BOOTSTRAP = '1';
