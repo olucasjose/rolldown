@@ -11,6 +11,12 @@ on:
 
 jobs:
   build-binding:
+    env:
+      # Rebuild std without its backtrace symbolizer for smaller shipped binaries.
+      # The gate (RUSTC_BOOTSTRAP + -Z build-std, keeping panic-unwind) lives in
+      # packages/rolldown/build-binding.ts and only fires on release builds with an
+      # explicit --target.
+      ROLLDOWN_BUILD_STD: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -87,7 +93,10 @@ jobs:
           save-cache: false
 
       - name: Rustup Adds Target
-        run: rustup target add ${{ matrix.target }}
+        run: |
+          rustup target add ${{ matrix.target }}
+          # std sources for `-Z build-std` (ROLLDOWN_BUILD_STD, see packages/rolldown/build-binding.ts)
+          rustup component add rust-src
 
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         if: ${{ contains(matrix.target, 'musl') }}

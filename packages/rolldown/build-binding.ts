@@ -34,9 +34,7 @@ if (argsOptions.release === true || argsOptions.profile === 'release') {
   // too: rustc uses the last matching prefix, so these more-specific mappings go last.
   try {
     for (const dir of readdirSync(resolve(cargoHome, 'registry', 'src'))) {
-      remaps.push(
-        `--remap-path-prefix=${resolve(cargoHome, 'registry', 'src', dir)}=/deps`,
-      );
+      remaps.push(`--remap-path-prefix=${resolve(cargoHome, 'registry', 'src', dir)}=/deps`);
     }
   } catch {
     // no registry dir (e.g. vendored deps) — nothing to collapse
@@ -51,11 +49,16 @@ if (argsOptions.release === true || argsOptions.profile === 'release') {
 // ~350 KiB of the binary) is dead weight in a napi addon — panics are caught and converted to
 // JS errors before anything would symbolize a backtrace. `panic-unwind` stays on, which napi
 // requires. Opt-in via the release workflow because it needs `RUSTC_BOOTSTRAP=1` to unlock
-// `-Z build-std` on the pinned stable toolchain, the `rust-src` component (declared in
-// rust-toolchain.toml), and an explicit `--target`. Behavior change in shipped binaries:
-// `RUST_BACKTRACE=1` prints unsymbolized frames; panic message + source location are kept.
+// `-Z build-std` on the pinned stable toolchain, the `rust-src` component (installed by the
+// release workflow), and an explicit `--target`. Scoped to the `release` profile so the
+// wasi build (`release-wasi`), which shares this script and the workflow env, keeps its
+// prebuilt std. Behavior change in shipped binaries: `RUST_BACKTRACE=1` prints unsymbolized
+// frames; panic message + source location are kept.
 // Measured on aarch64-apple-darwin: −162 KiB stripped, unwinding machinery verified intact.
-if (process.env.ROLLDOWN_BUILD_STD === '1') {
+if (
+  process.env.ROLLDOWN_BUILD_STD === '1' &&
+  (argsOptions.release === true || argsOptions.profile === 'release')
+) {
   if (argsOptions.target) {
     process.env.RUSTC_BOOTSTRAP = '1';
     process.env.CARGO_UNSTABLE_BUILD_STD = 'std,panic_unwind';
