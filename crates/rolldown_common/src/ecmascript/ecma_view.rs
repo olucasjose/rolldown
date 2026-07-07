@@ -167,9 +167,7 @@ impl EcmaView {
         // HMR from bubbling through the proxy chain (`foo -> proxy -> app`), which patch
         // generation is not set up for. Lazy dynamic-import HMR is a separate follow-up;
         // until then a lazy dynamic edge full-reloads exactly as before.
-        if record.kind.is_dynamic()
-          && !record.importer_path.as_str().contains("?rolldown-lazy=1")
-        {
+        if record.kind.is_dynamic() && !record.importer_path.as_str().contains("?rolldown-lazy=1") {
           self.dynamic_importers_idx.insert(record.importer_idx);
         }
       }
