@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { readdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
@@ -42,9 +43,18 @@ if (isRelease) {
   ];
   // Collapse the long per-registry hash directory (`registry/src/index.crates.io-<hash>`)
   // too: rustc uses the last matching prefix, so these more-specific mappings go last.
+  // The registry extraction dirs only exist after dependencies are fetched, and this script
+  // runs before napi invokes cargo — on a cold CI runner the directory would be empty. Fetch
+  // first (cheap: the same download cargo would do anyway), then enumerate sorted so the
+  // resulting flag set is deterministic.
+  spawnSync(
+    'cargo',
+    ['fetch', '--locked', ...(argsOptions.target ? ['--target', argsOptions.target] : [])],
+    { cwd: workspaceRoot, stdio: 'inherit' },
+  );
   const registrySrc = resolve(cargoHome, 'registry', 'src');
   try {
-    for (const dir of readdirSync(registrySrc)) {
+    for (const dir of readdirSync(registrySrc).sort()) {
       remaps.push(`--remap-path-prefix=${resolve(registrySrc, dir)}=/deps`);
     }
   } catch {
@@ -58,22 +68,30 @@ if (isRelease) {
 
 // Rebuild std without its `backtrace` feature: the DWARF symbolizer (gimli/object/addr2line,
 // ~350 KiB of the binary) is dead weight in a napi addon — panics are caught and converted to
-// JS errors before anything would symbolize a backtrace. `panic-unwind` stays on, which napi
-// requires. Opt-in via the release workflow because it needs `RUSTC_BOOTSTRAP=1` to unlock
+// JS errors before anything would symbolize. `panic-unwind` stays on, which napi requires.
+//
+// Accepted behavior change in shipped binaries: RUST_BACKTRACE=1 prints NO stack frames at
+// all — only the panic message and source location survive (which is what issue reports
+// contain in practice). The `backtrace-trace-only` raw-address mode was measured and rejected:
+// it only affects the panic printer, while `std::backtrace::Backtrace::capture` (reached via
+// anyhow's automatic capture) keeps the whole symbolizer linked, erasing the size win.
+//
+// Opt-in via the release workflow because it needs `RUSTC_BOOTSTRAP=1` to unlock
 // `-Z build-std` on the pinned stable toolchain, the `rust-src` component (installed by the
-// release workflow), and an explicit `--target`. Scoped to the `release` profile so the
-// wasi build (`release-wasi`), which shares this script and the workflow env, keeps its
-// prebuilt std; wasm targets are also excluded explicitly because they are `panic=abort`
-// targets where `std,panic_unwind` would be the wrong panic runtime. Behavior change in
-// shipped binaries: `RUST_BACKTRACE=1` prints unsymbolized frames; panic message + source
-// location are kept.
-// Measured on aarch64-apple-darwin: −162 KiB stripped, unwinding machinery verified intact.
+// release workflow), and an explicit `--target`. Scoped to the `release` profile so the wasi
+// build (`release-wasi`), which shares this script and the workflow env, keeps its prebuilt
+// std; wasm targets are also excluded explicitly because they are `panic=abort` targets where
+// `std,panic_unwind` would be the wrong panic runtime. windows-msvc is excluded because a
+// source-equivalent A/B showed build-std makes that binary slightly larger (+8 KiB).
 if (process.env.ROLLDOWN_BUILD_STD === '1' && isRelease) {
   if (!argsOptions.target) {
     console.warn(
       'ROLLDOWN_BUILD_STD=1 requires an explicit --target; building with prebuilt std instead',
     );
-  } else if (!argsOptions.target.startsWith('wasm')) {
+  } else if (
+    !argsOptions.target.startsWith('wasm') &&
+    !argsOptions.target.includes('windows')
+  ) {
     process.env.RUSTC_BOOTSTRAP = '1';
     process.env.CARGO_UNSTABLE_BUILD_STD = 'std,panic_unwind';
     process.env.CARGO_UNSTABLE_BUILD_STD_FEATURES = 'panic-unwind';
