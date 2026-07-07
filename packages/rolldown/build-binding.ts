@@ -82,10 +82,8 @@ if (process.env.ROLLDOWN_BUILD_STD === '1' && isRelease) {
 
 const napiArgs = {
   ...argsOptions,
-  cargoOptions: [
-    ...(argsOptions.cargoOptions ?? []),
-    ...(remapConfig ? ['--config', remapConfig] : []),
-  ],
+  // `getOptions()` doesn't surface CLI rest args, so this doesn't overwrite anything.
+  ...(remapConfig ? { cargoOptions: ['--config', remapConfig] } : {}),
   outputDir: './src',
   manifestPath: '../../crates/rolldown_binding/Cargo.toml',
   platform: true,
