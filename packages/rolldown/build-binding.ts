@@ -88,10 +88,7 @@ if (process.env.ROLLDOWN_BUILD_STD === '1' && isRelease) {
     console.warn(
       'ROLLDOWN_BUILD_STD=1 requires an explicit --target; building with prebuilt std instead',
     );
-  } else if (
-    !argsOptions.target.startsWith('wasm') &&
-    !argsOptions.target.includes('windows')
-  ) {
+  } else if (!argsOptions.target.startsWith('wasm') && !argsOptions.target.includes('windows')) {
     process.env.RUSTC_BOOTSTRAP = '1';
     process.env.CARGO_UNSTABLE_BUILD_STD = 'std,panic_unwind';
     process.env.CARGO_UNSTABLE_BUILD_STD_FEATURES = 'panic-unwind';
