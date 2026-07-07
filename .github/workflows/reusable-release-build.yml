@@ -91,12 +91,11 @@ jobs:
           # No caching to avoid cache poisoning in release artifacts
           restore-cache: false
           save-cache: false
+          # std sources for `-Z build-std` (ROLLDOWN_BUILD_STD, see packages/rolldown/build-binding.ts)
+          components: rust-src
 
       - name: Rustup Adds Target
-        run: |
-          rustup target add ${{ matrix.target }}
-          # std sources for `-Z build-std` (ROLLDOWN_BUILD_STD, see packages/rolldown/build-binding.ts)
-          rustup component add rust-src
+        run: rustup target add ${{ matrix.target }}
 
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         if: ${{ contains(matrix.target, 'musl') }}
@@ -136,6 +135,8 @@ jobs:
 
   build-freebsd:
     name: Build FreeBSD
+    # Deliberately does not set ROLLDOWN_BUILD_STD: provisioning rust-src inside the VM
+    # isn't worth it for this niche target, so its binary keeps the prebuilt std.
     runs-on: ubuntu-latest
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
