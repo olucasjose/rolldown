@@ -3,7 +3,7 @@ use std::{
   sync::{Arc, atomic::AtomicU32},
 };
 
-use rolldown_common::{ClientHmrInput, ScanMode};
+use rolldown_common::{ClientHmrInput, HmrUpdate, ScanMode};
 use rolldown_utils::indexmap::FxIndexMap;
 use tokio::sync::Mutex;
 
@@ -12,7 +12,10 @@ use rolldown::Bundler;
 use crate::{
   BundleOutput,
   dev_context::SharedDevContext,
-  types::{coordinator_msg::CoordinatorMsg, error_stage::ErrorStage, task_input::TaskInput},
+  types::{
+    coordinator_msg::CoordinatorMsg, error_stage::ErrorStage, pending_payload::PendingPayload,
+    task_input::TaskInput,
+  },
 };
 
 pub struct BundlingTask {
@@ -159,29 +162,60 @@ impl BundlingTask {
       .map(|(p, event)| (p.to_string_lossy().to_string(), *event))
       .collect::<FxIndexMap<_, _>>();
 
-    let client_sessions = self.dev_context.clients.lock().await;
-    let client_inputs: Vec<ClientHmrInput> = client_sessions
+    // Mint each client's envelope seq for this push, then build the inputs.
+    // Two passes: the mint mutates the sessions, the inputs borrow them.
+    let mut client_sessions = self.dev_context.clients.lock().await;
+    let minted_seqs: Vec<(String, u32)> = client_sessions
+      .iter_mut()
+      .map(|(client_key, client)| {
+        client.next_seq += 1;
+        (client_key.clone(), client.next_seq)
+      })
+      .collect();
+    let client_inputs: Vec<ClientHmrInput> = minted_seqs
       .iter()
-      .map(|(client_key, client)| ClientHmrInput {
+      .map(|(client_key, seq)| ClientHmrInput {
         client_id: client_key,
-        executed_modules: &client.executed_modules,
+        shipped: &client_sessions[client_key].shipped,
+        seq: *seq,
       })
       .collect();
 
     // Compute HMR updates for all clients in one call
+    let mut stamp_table = self.dev_context.stamp_table.lock().await;
     let hmr_result = bundler
       .compute_hmr_update_for_file_changes(
         &changed_files,
         &client_inputs,
+        &mut stamp_table,
         Arc::clone(&self.next_hmr_patch_id),
       )
       .await;
+    drop(stamp_table);
+    drop(client_inputs);
+    drop(client_sessions);
 
-    // Check if any update is a full reload (only if successful)
+    // Check if any update is a full reload (only if successful), and record each
+    // rendered patch as pending: the delivery notification max-merges its stamps
+    // into `shipped[C]` when the serving middleware sees the response for
+    // `patch.filename` complete.
     if let Ok(client_updates) = &hmr_result {
       for update in client_updates {
-        if update.update.is_full_reload() {
-          *has_full_reload_update = true;
+        match &update.update {
+          HmrUpdate::FullReload { .. } => *has_full_reload_update = true,
+          HmrUpdate::Patch(patch) => {
+            self
+              .dev_context
+              .insert_pending_payload(
+                patch.filename.clone(),
+                PendingPayload {
+                  client_id: update.client_id.clone(),
+                  modules: patch.carried.clone(),
+                },
+              )
+              .await;
+          }
+          HmrUpdate::Noop => {}
         }
       }
     }
