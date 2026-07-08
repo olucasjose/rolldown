@@ -22,6 +22,7 @@ tmp/**
 *.pdb
 
 # [Node]
+rolldown-artifact/
 
 # Logs
 logs
