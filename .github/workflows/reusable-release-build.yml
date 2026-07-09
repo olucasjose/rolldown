@@ -61,7 +61,9 @@ jobs:
         shell: bash
         env:
           TARGET_CC: clang # for mimalloc
-          RUSTFLAGS: "-C target-cpu=generic"
+          RUSTFLAGS: "-C target-cpu=cortex-a53 -C target-feature=-lse"
+          CFLAGS: "-march=armv8-a -mno-lse -mno-outline-atomics"
+          CXXFLAGS: "-march=armv8-a -mno-lse -mno-outline-atomics"
 
       - name: Upload Binding Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
